@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 
 from poblar import URL_IMAGENES, URLS_IMAGENES_ANTERIORES, poblar_productos, productos_ferreteria
 
-from .models import Producto
+from .models import ConsultaCliente, Producto
 
 
 class CatalogoCategoriasTests(TestCase):
@@ -400,3 +400,64 @@ class ReportesTests(TestCase):
     def test_reportes_requieren_staff(self):
         self.client.logout()
         self.assertEqual(self.client.get('/reportes/categorias/').status_code, 302)
+
+
+class ConsultaClienteTests(TestCase):
+    def setUp(self):
+        self.producto = Producto.objects.create(nombre='Martillo', categoria='Herramientas', precio=5000, stock=10)
+        self.datos = {
+            'nombre': 'Ana Pérez',
+            'correo': 'ana@correo.cl',
+            'producto': self.producto.id,
+            'mensaje': 'Quisiera saber si tienen stock para 20 unidades.',
+        }
+
+    def test_formulario_se_muestra_con_csrf(self):
+        respuesta = self.client.get('/contacto/')
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'csrfmiddlewaretoken')
+
+    def test_consulta_valida_se_guarda_y_confirma(self):
+        respuesta = self.client.post('/contacto/', self.datos, follow=True)
+        self.assertEqual(ConsultaCliente.objects.count(), 1)
+        consulta = ConsultaCliente.objects.get()
+        self.assertEqual(consulta.producto, self.producto)
+        self.assertIsNotNone(consulta.fecha)
+        self.assertContains(respuesta, 'Recibimos tu consulta')
+
+    def test_producto_de_interes_es_opcional(self):
+        self.datos['producto'] = ''
+        self.client.post('/contacto/', self.datos)
+        self.assertEqual(ConsultaCliente.objects.count(), 1)
+        self.assertIsNone(ConsultaCliente.objects.get().producto)
+
+    def test_campos_vacios_se_rechazan(self):
+        respuesta = self.client.post('/contacto/', {'nombre': '', 'correo': '', 'mensaje': ''})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(ConsultaCliente.objects.count(), 0)
+        self.assertContains(respuesta, 'Ingresa tu nombre.')
+
+    def test_correo_invalido_se_rechaza(self):
+        self.datos['correo'] = 'correo-malo'
+        respuesta = self.client.post('/contacto/', self.datos)
+        self.assertEqual(ConsultaCliente.objects.count(), 0)
+        self.assertContains(respuesta, 'correo válido')
+
+    def test_mensaje_corto_se_rechaza(self):
+        self.datos['mensaje'] = 'hola'
+        respuesta = self.client.post('/contacto/', self.datos)
+        self.assertEqual(ConsultaCliente.objects.count(), 0)
+        self.assertContains(respuesta, 'al menos 10 caracteres')
+
+    def test_post_sin_csrf_es_rechazado(self):
+        from django.test import Client
+        cliente = Client(enforce_csrf_checks=True)
+        respuesta = cliente.post('/contacto/', self.datos)
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(ConsultaCliente.objects.count(), 0)
+
+    def test_contador_de_visitas_usa_la_sesion(self):
+        self.client.get('/')
+        respuesta = self.client.get('/')
+        self.assertEqual(respuesta.context['visitas'], 2)
+        self.assertEqual(self.client.session['visitas'], 2)

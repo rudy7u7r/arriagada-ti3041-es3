@@ -11,7 +11,7 @@ from django.db import DatabaseError
 from django.db.models import Avg, Count, Q, Sum
 from django.db.utils import OperationalError
 from django.utils.text import slugify
-from .models import Producto
+from .models import ConsultaCliente, Producto
 from django.conf import settings
 from django.core.files.storage import default_storage
 
@@ -348,7 +348,12 @@ def lista_productos(request):
     carrito = request.session.get('carrito', {})
     total_items_carrito = sum(carrito.values())
 
+    # Sesiones (ES3): contador de visitas al catálogo por sesión de navegador.
+    if request.method == 'GET':
+        request.session['visitas'] = request.session.get('visitas', 0) + 1
+
     context = {
+        'visitas': request.session.get('visitas', 0),
         'secciones_catalogo': secciones_catalogo,
         'categorias': categorias,
         'categorias_conteo': categorias_conteo,
@@ -612,3 +617,66 @@ def reporte_stock_critico(request):
         'cantidad': productos.count(),
         'sin_stock': productos.filter(stock=0).count(),
     })
+
+
+# --- FORMULARIO DE CONSULTAS DE CLIENTES (ES3 · Etapa 3) ---
+
+class ConsultaClienteForm(forms.ModelForm):
+    class Meta:
+        model = ConsultaCliente
+        fields = ['nombre', 'correo', 'producto', 'mensaje']
+        labels = {
+            'nombre': 'Nombre',
+            'correo': 'Correo electrónico',
+            'producto': 'Producto de interés (opcional)',
+            'mensaje': 'Mensaje',
+        }
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control'}),
+            'correo': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'nombre@correo.cl'}),
+            'producto': forms.Select(attrs={'class': 'form-select'}),
+            'mensaje': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
+        }
+        error_messages = {
+            'nombre': {'required': 'Ingresa tu nombre.'},
+            'correo': {
+                'required': 'Ingresa tu correo.',
+                'invalid': 'Ingresa un correo válido, por ejemplo nombre@correo.cl.',
+            },
+            'mensaje': {'required': 'Escribe tu mensaje.'},
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['producto'].required = False
+        self.fields['producto'].empty_label = '— Sin producto en particular —'
+        self.fields['producto'].queryset = Producto.objects.order_by('nombre')
+
+    def clean_nombre(self):
+        nombre = self.cleaned_data['nombre'].strip()
+        if len(nombre) < 3:
+            raise forms.ValidationError('El nombre debe tener al menos 3 caracteres.')
+        return nombre
+
+    def clean_mensaje(self):
+        mensaje = self.cleaned_data['mensaje'].strip()
+        if len(mensaje) < 10:
+            raise forms.ValidationError('El mensaje debe tener al menos 10 caracteres.')
+        return mensaje
+
+
+def consulta_cliente(request):
+    """Formulario público de contacto: valida con ModelForm, guarda en la BD y confirma."""
+    if request.method == 'POST':
+        form = ConsultaClienteForm(request.POST)
+        if form.is_valid():
+            consulta = form.save()
+            messages.success(
+                request,
+                f'¡Gracias, {consulta.nombre}! Recibimos tu consulta y te responderemos a {consulta.correo}.'
+            )
+            return redirect('consulta_cliente')
+        messages.error(request, 'No se pudo enviar la consulta. Revisa los campos marcados.')
+    else:
+        form = ConsultaClienteForm()
+    return render(request, 'catalogo/consulta_cliente.html', {'form': form})

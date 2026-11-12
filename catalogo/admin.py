@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Producto
+from .models import ConsultaCliente, Producto
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
@@ -19,3 +19,11 @@ class ProductoAdmin(admin.ModelAdmin):
         return 'Sin imagen'
 
     imagen_preview.short_description = 'Vista previa'
+
+
+@admin.register(ConsultaCliente)
+class ConsultaClienteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nombre', 'correo', 'producto', 'fecha')
+    search_fields = ('nombre', 'correo', 'mensaje')
+    list_filter = ('fecha', 'producto')
+    readonly_fields = ('fecha',)

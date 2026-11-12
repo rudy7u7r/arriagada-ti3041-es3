@@ -1603,6 +1603,9 @@
                                 </a>
                             </li>
                         {% endfor %}
+                        <li>
+                            <a href="{% url 'consulta_cliente' %}"><i class="bi bi-envelope"></i>Contacto</a>
+                        </li>
                     </ul>
                 </div>
             </div>
@@ -1750,6 +1753,9 @@
                 </div>
             </div>
         </main>
+        <p class="text-center small py-4 mb-0" style="color: rgba(246,234,217,0.7);">
+            Has visitado el catálogo {{ visitas }} vez{{ visitas|pluralize:"es" }} en esta sesión.
+        </p>
     </div>
 
     {% if not user.is_authenticated %}

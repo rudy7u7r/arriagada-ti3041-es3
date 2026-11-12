@@ -9,7 +9,7 @@
     <style>
         body {
             background: linear-gradient(180deg, #0a0908, #17110d);
-            color: #f6ead9;
+            color: #ffffff;
             font-family: 'Segoe UI', sans-serif;
             min-height: 100vh;
         }
@@ -18,7 +18,7 @@
             border-bottom: 1px solid rgba(245,208,139,0.2);
         }
         .site-nav .navbar-brand { color: #f5d08b; font-weight: 800; }
-        .site-nav .nav-link { color: rgba(246,234,217,0.8); }
+        .site-nav .nav-link { color: rgba(255,255,255,0.9); }
         .site-nav .nav-link:hover,
         .site-nav .nav-link.active { color: #f5d08b; }
         .site-nav .nav-link.active { border-bottom: 2px solid #f0b36a; }
@@ -29,25 +29,28 @@
             border: 1px solid rgba(245,208,139,0.2);
             border-radius: 20px;
             padding: 28px;
+            color: #ffffff;
         }
-        .table { color: #f6ead9; --bs-table-bg: transparent; }
+        .table { color: #ffffff; --bs-table-bg: transparent; }
         .table thead th {
             background: rgba(240,179,106,0.08);
             color: #f5d08b;
             border-bottom: 1px solid rgba(245,208,139,0.16);
         }
-        .table td, .table th { border-color: rgba(245,208,139,0.1); vertical-align: middle; }
+        .table td, .table th { border-color: rgba(245,208,139,0.1); vertical-align: middle; color: #ffffff; }
         .table tfoot td { font-weight: 700; color: #f5d08b; }
         .num { text-align: right; font-variant-numeric: tabular-nums; }
         .btn-ornn {
             background: linear-gradient(135deg, #a75f1e, #f0b36a);
             color: #170d07; border: none; font-weight: 800; border-radius: 999px; padding: 0.5rem 1.2rem;
         }
-        .form-control { background: rgba(255,255,255,0.03); border: 1px solid rgba(245,208,139,0.25); color: #fff; }
-        .form-control:focus { background: rgba(255,255,255,0.05); border-color: #f0b36a; color: #fff; box-shadow: none; }
-        .stat { color: rgba(246,234,217,0.7); }
+        .form-control { background: rgba(255,255,255,0.03); border: 1px solid rgba(245,208,139,0.25); color: #ffffff; }
+        .form-control:focus { background: rgba(255,255,255,0.05); border-color: #f0b36a; color: #ffffff; box-shadow: none; }
+        .stat { color: rgba(255,255,255,0.8); }
         .stat strong { color: #f5d08b; font-size: 1.3rem; }
         .stock-cero { color: #ff9ca2; font-weight: 700; }
+        label, .form-label { color: #ffffff; }
+        .form-select option { color: #ffffff; background: #17110d; }
     </style>
     {% block extra_head %}{% endblock %}
 </head>

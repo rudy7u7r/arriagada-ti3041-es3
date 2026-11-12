@@ -271,7 +271,7 @@ class AdministracionTests(TestCase):
             'imagen': '',
         })
 
-        self.assertRedirects(response, '/crud/')
+        self.assertRedirects(response, '/')
         producto = Producto.objects.get(nombre='Producto con URL')
         self.assertEqual(producto.imagen, image_url)
 
@@ -299,12 +299,35 @@ class AdministracionTests(TestCase):
                     },
                 )
 
-                self.assertRedirects(response, '/crud/')
+                self.assertRedirects(response, '/')
                 self.producto.refresh_from_db()
                 self.assertEqual(self.producto.imagen, '/media/productos/producto.png')
                 self.assertTrue(
                     (Path(media_root) / 'productos' / 'producto.png').is_file()
                 )
+
+
+    def test_crear_producto_invalido_no_guarda(self):
+        self.client.force_login(self.admin)
+        total = Producto.objects.count()
+        response = self.client.post('/crud/nuevo/', {
+            'nombre': 'ab', 'categoria': 'Pintura', 'precio': -5, 'stock': -1,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Producto.objects.count(), total)
+        self.assertContains(response, 'al menos 3 caracteres')
+
+    def test_eliminar_pide_confirmacion_y_solo_borra_por_post(self):
+        self.client.force_login(self.admin)
+        url = f'/crud/eliminar/{self.producto.id}/'
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Producto.objects.filter(id=self.producto.id).exists())
+
+        response = self.client.post(url)
+        self.assertRedirects(response, '/')
+        self.assertFalse(Producto.objects.filter(id=self.producto.id).exists())
 
 
 class PoblamientoProductosTests(TestCase):
@@ -346,3 +369,34 @@ class PoblamientoProductosTests(TestCase):
         producto_personalizado.refresh_from_db()
         self.assertEqual(producto_antiguo.imagen, URL_IMAGENES[martillo['nombre']])
         self.assertEqual(producto_personalizado.imagen, imagen_personalizada)
+
+
+class ReportesTests(TestCase):
+    def setUp(self):
+        Producto.objects.create(nombre='A', categoria='Pintura', precio=1000, stock=2)
+        Producto.objects.create(nombre='B', categoria='Pintura', precio=3000, stock=0)
+        Producto.objects.create(nombre='C', categoria='Medición', precio=5000, stock=30)
+        self.staff = User.objects.create_user('staff', password='x', is_staff=True)
+        self.client.login(username='staff', password='x')
+
+    def test_reporte_categorias_agrupa_con_orm(self):
+        respuesta = self.client.get('/reportes/categorias/')
+        self.assertEqual(respuesta.status_code, 200)
+        filas = {f['categoria']: f for f in respuesta.context['resumen']}
+        self.assertEqual(filas['Pintura']['cantidad'], 2)
+        self.assertEqual(filas['Pintura']['precio_promedio'], 2000)
+        self.assertEqual(filas['Pintura']['stock_total'], 2)
+        self.assertEqual(respuesta.context['totales']['total_stock'], 32)
+
+    def test_reporte_stock_critico_filtra_y_ordena(self):
+        respuesta = self.client.get('/reportes/stock-critico/?umbral=5')
+        self.assertEqual([p.nombre for p in respuesta.context['productos']], ['B', 'A'])
+        self.assertEqual(respuesta.context['sin_stock'], 1)
+
+    def test_umbral_invalido_usa_valor_por_defecto(self):
+        respuesta = self.client.get('/reportes/stock-critico/?umbral=abc')
+        self.assertEqual(respuesta.context['umbral'], 10)
+
+    def test_reportes_requieren_staff(self):
+        self.client.logout()
+        self.assertEqual(self.client.get('/reportes/categorias/').status_code, 302)

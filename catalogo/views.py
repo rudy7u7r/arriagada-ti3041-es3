@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django import forms
 from django.contrib.auth.models import User
 from django.db import DatabaseError
-from django.db.models import Count, Q, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.db.utils import OperationalError
 from django.utils.text import slugify
 from .models import Producto
@@ -92,6 +92,24 @@ class ProductoForm(forms.ModelForm):
             'precio': forms.NumberInput(attrs={'class': 'form-control'}),
             'stock': forms.NumberInput(attrs={'class': 'form-control'}),
         }
+
+    def clean_nombre(self):
+        nombre = self.cleaned_data['nombre'].strip()
+        if len(nombre) < 3:
+            raise forms.ValidationError('El nombre debe tener al menos 3 caracteres.')
+        return nombre
+
+    def clean_precio(self):
+        precio = self.cleaned_data['precio']
+        if precio <= 0:
+            raise forms.ValidationError('El precio debe ser mayor que cero.')
+        return precio
+
+    def clean_stock(self):
+        stock = self.cleaned_data['stock']
+        if stock < 0:
+            raise forms.ValidationError('El stock no puede ser negativo.')
+        return stock
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -464,54 +482,6 @@ def procesar_compra(request):
 
 # --- CRUD PRODUCTOS ---
 
-@login_required(login_url='login')
-@staff_required
-def crear_producto(request):
-    if request.method == 'POST':
-        form = ProductoForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Producto creado con éxito.')
-            return redirect('lista_productos')
-        else:
-            messages.error(request, 'Error al crear el producto. Por favor verifica los datos.')
-    else:
-        form = ProductoForm()
-    return render(request, 'catalogo/crear_producto.html', {'form': form})
-
-@login_required(login_url='login')
-@staff_required
-def editar_producto(request, producto_id):
-    producto = get_object_or_404(Producto, id=producto_id)
-
-    if request.method == 'POST':
-        form = ProductoForm(request.POST, instance=producto)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Producto actualizado con éxito.')
-            return redirect('lista_productos')
-        else:
-            messages.error(request, 'Error al actualizar el producto. Por favor verifica los datos.')
-    else:
-        form = ProductoForm(instance=producto)
-    return render(request, 'catalogo/editar_producto.html', {'form': form, 'producto': producto})
-
-@login_required(login_url='login')
-@staff_required
-def eliminar_producto(request, producto_id):
-    producto = get_object_or_404(Producto, id=producto_id)
-    if request.method == 'POST':
-        producto.delete()
-        messages.success(request, 'Producto eliminado con éxito.')
-        return redirect('lista_productos')
-    return render(request, 'catalogo/eliminar_producto.html', {'producto': producto})
-
-@login_required(login_url='login')
-@staff_required
-def listar_productos_admin(request):
-    productos = Producto.objects.all()
-    return render(request, 'catalogo/listar_productos_admin.html', {'productos': productos})
-
 @staff_required
 def productos_crud(request):
     productos = _safe_db_call(
@@ -528,9 +498,10 @@ def producto_nuevo(request):
     if request.method == 'POST':
         form = ProductoForm(request.POST, request.FILES)
         if form.is_valid():
-            form.save()
-            messages.success(request, 'Producto creado correctamente.')
-            return redirect('productos_crud')
+            producto = form.save()
+            messages.success(request, f'Producto "{producto.nombre}" creado correctamente.')
+            return redirect('lista_productos')
+        messages.error(request, 'No se pudo crear el producto. Revisa los campos marcados.')
     else:
         form = ProductoForm()
     return render(request, 'catalogo/producto_form.html', {'form': form, 'titulo': 'Nuevo producto'})
@@ -542,9 +513,10 @@ def producto_editar(request, producto_id):
     if request.method == 'POST':
         form = ProductoForm(request.POST, request.FILES, instance=producto)
         if form.is_valid():
-            form.save()
-            messages.success(request, 'Producto actualizado correctamente.')
-            return redirect('productos_crud')
+            producto = form.save()
+            messages.success(request, f'Producto "{producto.nombre}" actualizado correctamente.')
+            return redirect('lista_productos')
+        messages.error(request, 'No se pudo actualizar el producto. Revisa los campos marcados.')
     else:
         form = ProductoForm(instance=producto)
     return render(request, 'catalogo/producto_form.html', {'form': form, 'titulo': 'Editar producto', 'producto': producto})
@@ -552,10 +524,14 @@ def producto_editar(request, producto_id):
 
 @staff_required
 def producto_eliminar(request, producto_id):
+    """GET muestra la pantalla de confirmación; solo el POST borra el registro."""
     producto = get_object_or_404(Producto, id=producto_id)
-    producto.delete()
-    messages.success(request, 'Producto eliminado correctamente.')
-    return redirect('productos_crud')
+    if request.method == 'POST':
+        nombre = producto.nombre
+        producto.delete()
+        messages.success(request, f'Producto "{nombre}" eliminado correctamente.')
+        return redirect('lista_productos')
+    return render(request, 'catalogo/eliminar_producto.html', {'producto': producto})
 
 
 @user_passes_test(lambda u: u.is_active and u.is_staff)
@@ -582,3 +558,57 @@ def admin_panel(request):
         'stock_bajo': todos_productos.filter(stock__lte=5).count(),
     }
     return render(request, 'catalogo/admin_panel.html', context)
+
+
+# --- REPORTES CON ORM (ES3 · Etapa 2) ---
+
+@staff_required
+def reporte_categorias(request):
+    """Reporte 1: resumen por categoría. Todo el cálculo lo hace el ORM."""
+    resumen = list(
+        Producto.objects.values('categoria')
+        .annotate(
+            cantidad=Count('id'),
+            precio_promedio=Avg('precio'),
+            stock_total=Sum('stock'),
+        )
+        .order_by('categoria')
+    )
+    for fila in resumen:
+        fila['precio_promedio'] = round(fila['precio_promedio'] or 0)
+
+    totales = Producto.objects.aggregate(
+        total_productos=Count('id'),
+        total_stock=Sum('stock'),
+        precio_promedio=Avg('precio'),
+    )
+    totales['precio_promedio'] = round(totales['precio_promedio'] or 0)
+    totales['total_stock'] = totales['total_stock'] or 0
+
+    return render(request, 'catalogo/reporte_categorias.html', {
+        'resumen': resumen,
+        'totales': totales,
+        'total_categorias': len(resumen),
+    })
+
+
+@staff_required
+def reporte_stock_critico(request):
+    """Reporte 2: productos con stock menor o igual al umbral, del más escaso al más abundante."""
+    umbral_por_defecto = 10
+    try:
+        umbral = int(request.GET.get('umbral', umbral_por_defecto))
+        if umbral < 0:
+            raise ValueError
+    except ValueError:
+        umbral = umbral_por_defecto
+        messages.warning(request, 'El umbral debe ser un número entero positivo; se usó el valor por defecto (10).')
+
+    productos = Producto.objects.filter(stock__lte=umbral).order_by('stock', 'nombre')
+
+    return render(request, 'catalogo/reporte_stock_critico.html', {
+        'productos': productos,
+        'umbral': umbral,
+        'cantidad': productos.count(),
+        'sin_stock': productos.filter(stock=0).count(),
+    })

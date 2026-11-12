@@ -1561,6 +1561,8 @@
                                 <div class="profile-menu-divider"></div>
                                 {% if user.is_staff %}
                                     <a href="{% url 'admin_panel' %}"><i class="bi bi-speedometer2"></i>Panel administrador</a>
+                                    <a href="{% url 'reporte_categorias' %}"><i class="bi bi-bar-chart"></i>Reportes</a>
+                                    <a href="{% url 'productos_crud' %}"><i class="bi bi-pencil-square"></i>Gestionar productos</a>
                                 {% else %}
                                     <a href="{% url 'ver_carrito' %}"><i class="bi bi-cart3"></i>Mi carrito</a>
                                 {% endif %}
